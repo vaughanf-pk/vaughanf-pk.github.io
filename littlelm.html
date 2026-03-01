@@ -46,7 +46,7 @@
   /* 4-column grid */
   .main {
     display: grid;
-    grid-template-columns: 210px 1fr 200px;
+    grid-template-columns: 210px 1fr 200px 310px;
     grid-template-rows: 1fr auto;
     gap: 1px;
     background: var(--border);
@@ -217,8 +217,88 @@
   .log-line.info { color:var(--accent3); }
   .log-line.good { color:var(--accent); }
 
-  /* ── COL 4: Explanation (extracted to explain-panel.html) ── */
-  #panel-explain { display:none; }
+  /* ── COL 4: Explanation ── */
+  #panel-explain {
+    grid-column:4; grid-row:1/3;
+    display:flex; flex-direction:column; padding:0; overflow:hidden;
+    background:var(--panel);
+  }
+
+  .explain-nav {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px 8px; border-bottom:1px solid var(--border);
+    background:var(--dim); flex-shrink:0;
+  }
+  .nav-btn {
+    background:transparent; border:1px solid var(--border);
+    color:var(--muted); font-family:'Space Mono',monospace;
+    font-size:0.72rem; padding:5px 9px; cursor:pointer;
+    border-radius:3px; letter-spacing:0.05em; transition:all 0.2s;
+    flex-shrink:0;
+  }
+  .nav-btn:hover:not(:disabled) { border-color:var(--accent3); color:var(--accent3); }
+  .nav-btn:disabled { opacity:0.25; cursor:not-allowed; }
+
+  .nav-center {
+    font-family:'Space Mono',monospace; font-size:0.72rem;
+    color:var(--muted); text-align:center; flex:1; padding:0 8px;
+  }
+  .nav-step-name {
+    display:block; color:var(--accent4); font-size:0.7rem;
+    letter-spacing:0.1em; margin-bottom:2px; text-transform:uppercase;
+  }
+
+  .explain-dots {
+    display:flex; gap:4px; justify-content:center; padding:8px 14px 6px;
+    flex-shrink:0; flex-wrap:wrap; border-bottom:1px solid var(--border);
+  }
+  .e-dot {
+    width:8px; height:8px; border-radius:50%; background:var(--border);
+    cursor:pointer; transition:all 0.2s; border:1px solid transparent;
+  }
+  .e-dot:hover   { background:var(--muted); }
+  .e-dot.reached { background:#00ff8840; border-color:var(--accent); }
+  .e-dot.current { background:var(--accent4); border-color:var(--accent4); transform:scale(1.35); }
+
+  .explain-body { flex:1; overflow-y:auto; }
+
+  .explain-hero {
+    padding:16px 16px 10px; border-bottom:1px solid var(--border);
+  }
+  .explain-emoji-wrap { font-size:2.0rem; margin-bottom:7px; display:block; }
+  .explain-step-label {
+    font-family:'Space Mono',monospace; font-size:0.68rem;
+    letter-spacing:0.14em; color:var(--accent4); text-transform:uppercase; margin-bottom:5px;
+  }
+  .explain-tagline { font-size:1.1rem; font-weight:600; color:var(--text); line-height:1.3; }
+
+  .explain-section { padding:12px 16px; border-bottom:1px solid var(--border); }
+  .explain-section-title {
+    font-family:'Space Mono',monospace; font-size:0.68rem; letter-spacing:0.12em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:7px;
+  }
+  .explain-plain { font-size:0.92rem; color:#b0b0d0; line-height:1.75; }
+  .explain-plain strong { color:var(--text); }
+  .explain-plain em     { color:var(--accent3); font-style:normal; }
+
+  .explain-tech-box {
+    background:#07070d; border:1px solid var(--border); border-radius:4px;
+    padding:9px 11px; font-family:'Space Mono',monospace;
+    font-size:0.72rem; color:var(--muted); line-height:1.75;
+  }
+  .explain-tech-box .hl  { color:var(--accent4); }
+  .explain-tech-box .hl2 { color:var(--accent); }
+  .explain-tech-box .hl3 { color:var(--accent2); }
+  .explain-tech-box .hl4 { color:var(--accent3); }
+
+  .explain-footer {
+    padding:10px 14px; flex-shrink:0;
+    border-top:1px solid var(--border); background:var(--dim);
+    display:flex; gap:6px;
+  }
+  .explain-footer .nav-btn { flex:1; padding:7px; font-size:0.76rem; }
+  .explain-footer .nav-btn.primary { border-color:var(--accent3); color:var(--accent3); }
+  .explain-footer .nav-btn.primary:hover:not(:disabled) { background:#6b8bff20; }
 
   .explain-nav {
     display:flex; align-items:center; justify-content:space-between;
@@ -301,7 +381,7 @@
 
 <header>
   <h1>Little Language Model - The fundamentals of scaled dot product attention</h1>
-  <p>Explanations: open <a href="explain-panel.html" target="_blank" style="color:var(--accent3);text-decoration:none;border-bottom:1px solid var(--accent3);">explain-panel.html</a> alongside</p>
+  <p>Navigate explanations with ← → in right panel</p>
 </header>
 
 <div class="main">
@@ -574,12 +654,204 @@ function backward(toks,target){
 let ts={epoch:0,step:0,total:0,sIdx:0,losses:[],lossMax:0,phase:'idle'};
 let is={context:null,generated:[],running:false};
 
-// ── Explanation Panel (extracted to explain-panel.html) ──
-// No-op stubs so step pills and init calls don't error.
-function buildDots(){}
-function showExplain(){}
-function explainNav(){}
-function jumpExplain(){}
+// ── Explanation Panel ────────────────────────────────
+// Static list of all explanation steps — always available, never changes.
+const EXPLAIN_ORDER=['welcome','embed','qkv','scores','softmax','output','logits','loss','backprop','infer_start','infer_step'];
+let EC=0; // cursor into EXPLAIN_ORDER
+
+const EXPL={
+  welcome:{
+    emoji:'🧠', label:'WELCOME',
+    tagline:'A real language model, running in your browser',
+    plain:`This visualiser runs a genuine (tiny) transformer neural network — the same fundamental architecture behind ChatGPT, Claude, and every other large language model.
+
+It's been scaled to toy size so every individual number is visible, but the mathematics is identical to production models.
+
+<strong>How to use it:</strong> press <strong>STEP</strong> in the left panel to run one training example through the model. Each press fires all eight stages of the forward and backward pass. Each stage is queued here as a card — use <strong>← PREV</strong> and <strong>NEXT →</strong> to read through them at your own pace, completely independent of training speed.
+
+You can also click any stage pill at the top of the centre panel to jump directly to the most recent explanation of that stage.
+
+After training for a few epochs (use <strong>TRAIN EPOCH</strong> or <strong>AUTO-TRAIN</strong>), press <strong>START INFERENCE</strong> to watch the trained model generate tokens on its own.`,
+    tech:null
+  },
+  embed:{
+    emoji:'🔤', label:'STEP 1 — EMBED',
+    tagline:'Turning letters into lists of numbers',
+    plain:`The model can only work with numbers, not letters. So the first thing it does is look up each input token in a large table called the <strong>embedding matrix</strong>.
+
+Think of it as a dictionary where every word has been assigned a unique "address" in a high-dimensional mathematical space. Each token becomes a short list of numbers — a <em>vector</em>. Crucially, tokens with similar meanings end up near each other in this space, which is part of what makes language models work.
+
+We also add <strong>positional encodings</strong> — a second set of numbers that tell the model whether a token appeared first, second, or third in the sequence. Without this, the model would treat "A B C" identically to "C A B," losing all word-order information.
+
+The colour-coded grid in the centre panel shows the resulting embedding matrix — each row is one token's vector representation.`,
+    tech:`Tokens looked up in embedding table E (${VOCAB_SIZE}×${D_MODEL} learnable parameters).\nPositional encoding PE[pos] added element-wise.\n\nResult: ${SEQ_LEN}×${D_MODEL} matrix shown in centre panel.\nEach row = one token's combined semantic + positional vector.`
+  },
+  qkv:{
+    emoji:'🔍', label:'STEP 2 — QUERY · KEY · VALUE',
+    tagline:'Every token asks a question, broadcasts an identity, and holds information',
+    plain:`This is the central idea of the attention mechanism. For each token, the model creates three separate representations by multiplying its embedding through three learned weight matrices:
+
+<strong>Query (Q)</strong> — "What am I looking for?" The question a token is asking of the rest of the sequence.
+
+<strong>Key (K)</strong> — "What do I represent?" Each token's self-description — what it's advertising to other tokens that might want to attend to it.
+
+<strong>Value (V)</strong> — "What do I actually carry?" The content a token will contribute if another token decides to attend to it.
+
+A useful analogy: imagine a library search system. Your search query is Q, the book catalogue labels are K, and the actual book contents are V. The model learns — through training — which kinds of queries match which kinds of keys.`,
+    tech:`Q = embeds · <span class="hl">Wq</span>  (${SEQ_LEN}×${D_MODEL} · ${D_MODEL}×${D_K} = ${SEQ_LEN}×${D_K})\nK = embeds · <span class="hl">Wk</span>  same shape\nV = embeds · <span class="hl">Wv</span>  same shape\n\nd_k = ${D_K}, d_model = ${D_MODEL}\nThe three matrices Wq, Wk, Wv are what\nget learned during backpropagation.`
+  },
+  scores:{
+    emoji:'📊', label:'STEP 3 — ATTENTION SCORES',
+    tagline:'How relevant is each token to every other token?',
+    plain:`Now the model compares each token's <em>question</em> (Query) against every other token's <em>description</em> (Key) using a dot product — a mathematical operation that gives a high score when two vectors point in similar directions, and a low score otherwise.
+
+We divide by a <strong>scaling factor</strong> (√dₖ). Without this, in larger models the dot products grow very large, which causes problems in the next step. This "scaling" is where the technique gets its formal name: scaled dot-product attention.
+
+We also apply a <strong>causal mask</strong>: position i cannot attend to positions after it. This is what makes the model autoregressive — at generation time, you don't know future tokens, so we enforce that during training too.`,
+    tech:`scores = Q · Kᵀ / √${D_K}\n       = Q · Kᵀ / <span class="hl">${Math.sqrt(D_K).toFixed(3)}</span>\n\nResult shape: ${SEQ_LEN}×${SEQ_LEN}\n(one score per query–key pair)\n\nCausal mask: upper triangle set to −∞\nso softmax maps them to ≈ 0.`
+  },
+  softmax:{
+    emoji:'🌡️', label:'STEP 4 — SOFTMAX',
+    tagline:'Converting raw scores into a probability distribution',
+    plain:`The raw attention scores are arbitrary numbers. Softmax squashes them into values between 0 and 1 that <strong>all add up to exactly 1</strong> — turning them into proper attention weights.
+
+A weight of 0.9 means "this token is devoting nearly all its attention to that one other token." Equal weights mean "drawing a little from everyone."
+
+The coloured grid in the centre panel is this attention matrix. <strong>Brighter/greener cells mean stronger attention</strong>. You can literally see what the model is "looking at" as it reads each position.
+
+Watch how this pattern changes as training progresses — early on, the weights are nearly uniform (the model doesn't know what to focus on yet). Later, clearer patterns emerge.`,
+    tech:`softmax(xᵢ) = exp(xᵢ) / Σⱼ exp(xⱼ)\nApplied row-wise: each row sums to 1.\n\nCell (i, j) = how much token i\n              attends to token j.\n\nUpper triangle ≈ 0 (causal mask).\nDiagonal is often largest — tokens\nfrequently attend to themselves.`
+  },
+  output:{
+    emoji:'🧮', label:'STEP 5 — OUTPUT',
+    tagline:'Blending information from across the sequence',
+    plain:`Now we use the attention weights to actually <strong>mix information together</strong>. Each token's output is a weighted blend of all the Value vectors, where the weights come from the attention scores.
+
+If token 3 paid heavy attention to token 1, its output will be heavily influenced by token 1's Values. This is how <em>context flows</em> through the model — a token can "reach back" and absorb meaning from earlier positions.
+
+The result is projected through one more matrix (<strong>Wo</strong>) to restore the original dimension, then <strong>added back to the original input</strong>. This addition is called a residual connection or skip connection — a crucial engineering trick that gives gradients a direct path backwards and helps the network learn much more reliably.`,
+    tech:`attn_out = attnWeights · V  (${SEQ_LEN}×${D_K})\nprojected = attn_out · Wo\n          (${D_K}×${D_MODEL} → ${SEQ_LEN}×${D_MODEL})\n\nresidual = embeds + projected\n         ← skip / residual connection\n\nThe output grid in the centre panel\nshows attn_out before projection.`
+  },
+  logits:{
+    emoji:'🎲', label:'STEP 6 — LOGITS',
+    tagline:"Translating the model's understanding into a prediction",
+    plain:`We take the last token's representation — the most "informed" position, since it can attend to everything before it — and ask: <em>given everything the model has processed, what token should come next?</em>
+
+This is done via a final weight matrix (<strong>Wout</strong>) that maps the model's internal representation to one score per vocabulary token. These raw scores are called <strong>logits</strong>.
+
+Another softmax converts them into a proper probability distribution. The model is essentially saying: "I think there's a 60% chance the next token is D, a 25% chance it's E..." and so on.
+
+The probability bars shown during inference come directly from this step.`,
+    tech:`lastHidden = residual[${SEQ_LEN-1}]  (shape: ${D_MODEL})\nlogits = lastHidden · Wout + b  (shape: ${VOCAB_SIZE})\nprobs = softmax(logits)\n\nThe highest-probability token becomes\nthe model's prediction for the next token.`
+  },
+  loss:{
+    emoji:'📉', label:'STEP 7 — LOSS',
+    tagline:'Measuring how wrong the model was',
+    plain:`The model has made a prediction. Now we compare it to the <strong>correct answer</strong> and score how wrong it was.
+
+We use <strong>cross-entropy loss</strong>, which measures how <em>surprised</em> the model was by the right answer. If the model said "90% chance D" and D was correct, it barely gets penalised. If it said "2% chance D" and D was still correct, the loss is high.
+
+Mathematically: loss = −log(probability assigned to correct token).
+
+Watch the loss graph in the left panel — it should trend <strong>downward</strong> as training progresses. Each epoch should average lower than the last. When the model starts confidently predicting correctly, the loss approaches zero.`,
+    tech:`CE loss = −log P(target)\n\nThe lower the probability assigned to the\ncorrect token, the higher the loss.\n\nRandom baseline: ${Math.log(VOCAB_SIZE).toFixed(3)}\n(loss of a model that guesses uniformly)\n\nWatch the loss graph on the left — it\nshould trend downward as training runs.`
+  },
+  backprop:{
+    emoji:'🔄', label:'STEP 8 — BACKPROP',
+    tagline:'Learning from mistakes by adjusting every single weight',
+    plain:`This is where learning actually happens. We work <strong>backwards</strong> through every calculation, using the chain rule of calculus to answer: "if this weight had been slightly different, would the loss have gone up or down?"
+
+The answer for each weight is its <strong>gradient</strong> — an arrow pointing in the direction that would increase the loss. We then take a small step in the <em>opposite</em> direction. This is gradient descent.
+
+Every number in every weight matrix — Wq, Wk, Wv, Wo, and Wout — gets nudged slightly towards making the prediction more correct. After thousands of examples, these tiny nudges accumulate into genuine learned patterns.
+
+Watch the weight matrices in the third panel — their colours shift subtly after every backprop step as the values change.`,
+    tech:`Chain rule traversal (reverse of forward pass):\n∂L/∂Wout → ∂L/∂lastH → ∂L/∂Wo\n→ ∂L/∂attnWeights → ∂L/∂V, ∂L/∂K, ∂L/∂Q\n→ ∂L/∂Wv, ∂L/∂Wk, ∂L/∂Wq\n\nSGD update: <span class="hl">W ← W − ${LR} × ∇W</span>\nGradients clipped to ±2 (prevents explosion)\nUpdated: <span class="hl2">Wq, Wk, Wv, Wo, Wout, b_out</span>`
+  },
+  infer_start:{
+    emoji:'🚀', label:'INFERENCE START',
+    tagline:'The model puts its training to work',
+    plain:`Training is paused. The model now runs in <strong>inference mode</strong> — no more learning, just predicting.
+
+We've given it a starting sequence (shown in blue). It will predict what comes next, one token at a time.
+
+The forward pass is identical to training, but we skip the loss and backpropagation steps entirely. We just read off the probability distribution and pick the most likely next token.
+
+The chosen token is then added to the context, and the model predicts again from the updated context. This is called <strong>autoregressive generation</strong> — each token feeds into the next, extending the sequence step by step.`,
+    tech:null
+  },
+  infer_step:{
+    emoji:'⊳', label:'INFERENCE STEP',
+    tagline:'One more token generated',
+    plain:`The model ran a full forward pass on the current context and produced a probability distribution over all 26 possible next tokens.
+
+The bar chart shows these probabilities. The <strong>green bar</strong> is the model's top choice — the token it is most confident about.
+
+After enough training, you should see the model confidently picking the correct continuation of the pattern. If all bars are roughly equal, the model hasn't yet learned this pattern — try training for more steps.
+
+The attention heatmap in the centre panel also updates to show which tokens in the context the model was attending to when making this prediction.`,
+    tech:null
+  }
+};
+
+// ── Explanation UI (static) ──────────────────────────
+function buildDots(){
+  const c=document.getElementById('explain-dots');
+  c.innerHTML='';
+  EXPLAIN_ORDER.forEach((_,i)=>{
+    const d=document.createElement('div');
+    d.className='e-dot';
+    d.title=EXPLAIN_ORDER[i];
+    d.onclick=()=>showExplain(i);
+    c.appendChild(d);
+  });
+  updateDots();
+}
+function updateDots(){
+  document.querySelectorAll('.e-dot').forEach((d,i)=>{
+    d.className='e-dot'+(i===EC?' current':' reached');
+  });
+}
+function updateNavBtns(){
+  const atS=EC<=0, atE=EC>=EXPLAIN_ORDER.length-1;
+  ['ep-prev-t','ep-prev-b'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=atS;});
+  ['ep-next-t','ep-next-b'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=atE;});
+}
+function showExplain(idx){
+  if(idx<0||idx>=EXPLAIN_ORDER.length)return;
+  EC=idx;
+  const key=EXPLAIN_ORDER[idx];
+  const e=EXPL[key];
+  if(!e)return;
+  const tech=e.tech||null;
+  document.getElementById('explain-body').innerHTML=`
+    <div class="explain-hero">
+      <span class="explain-emoji-wrap">${e.emoji}</span>
+      <div class="explain-step-label">${e.label}</div>
+      <div class="explain-tagline">${e.tagline}</div>
+    </div>
+    <div class="explain-section">
+      <div class="explain-section-title">Plain English</div>
+      <div class="explain-plain">${e.plain.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/^/,'<p>').replace(/$/,'</p>').replace(/<p><\/p>/g,'')}</div>
+    </div>
+    ${tech?`<div class="explain-section">
+      <div class="explain-section-title">Technical Detail</div>
+      <div class="explain-tech-box">${tech}</div>
+    </div>`:''}
+  `;
+  document.getElementById('nav-step-name').textContent=e.label;
+  document.getElementById('nav-counter').textContent=`${idx+1} / ${EXPLAIN_ORDER.length}`;
+  updateDots(); updateNavBtns();
+  document.getElementById('explain-body').scrollTop=0;
+}
+function explainNav(dir){
+  const n=EC+dir;
+  if(n>=0&&n<EXPLAIN_ORDER.length)showExplain(n);
+}
+function jumpExplain(key){
+  const idx=EXPLAIN_ORDER.indexOf(key);
+  if(idx>=0)showExplain(idx);
+}
 
 // ── Rendering ────────────────────────────────────────
 const clr=(v,mn,mx,h=120)=>{const t=clamp((v-mn)/(mx-mn+1e-9),0,1);return`hsla(${h},80%,${20+t*50}%,${0.3+t*0.7})`;};
@@ -826,6 +1098,7 @@ function initUI(){
     initModel();
     ts={epoch:0,step:0,total:0,sIdx:0,losses:[],lossMax:0,phase:'idle'};
     is={context:null,generated:[],running:false};
+    EC=0;
     refreshStats();refreshWts();pillReset();setPhase('idle');
     ['mat-embed','mat-Q','mat-K','mat-V','mat-attn','mat-out'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='';});
     document.getElementById('token-display').innerHTML='<span style="color:var(--muted);font-size:0.7rem;">Train the model first, then run inference.</span>';
