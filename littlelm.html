@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Little Language Model</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel: #111118;
+    --border: #1e1e2e;
+    --accent: #00ff88;
+    --accent2: #ff6b6b;
+    --accent3: #6b8bff;
+    --accent4: #ffd700;
+    --text: #e0e0f0;
+    --muted: #555570;
+    --dim: #1a1a28;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .mono { font-family: 'Space Mono', monospace; }
+
+  header {
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: 0.05em; }
+  header p  { font-size: 0.82rem; color: var(--muted); }
+
+  /* 4-column grid */
+  .main {
+    display: grid;
+    grid-template-columns: 210px 1fr 200px;
+    grid-template-rows: 1fr auto;
+    gap: 1px;
+    background: var(--border);
+    height: calc(100vh - 51px);
+  }
+
+  .panel {
+    background: var(--panel);
+    padding: 14px;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .separator { width:100%; height:1px; background:var(--border); margin:10px 0; }
+
+  /* ── COL 1: Data + Controls ── */
+  #panel-data { grid-column:1; grid-row:1/3; }
+
+  .vocab-grid { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px; }
+  .vocab-token {
+    width:24px; height:24px;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border);
+    font-family:'Space Mono',monospace; font-size:0.7rem;
+    color:var(--muted); transition:all 0.15s; border-radius:3px;
+  }
+  .vocab-token.active { border-color:var(--accent); color:var(--accent); background:#00ff8811; }
+
+  #dataset-list {
+    max-height:220px; overflow-y:auto;
+    border:1px solid var(--border); border-radius:3px; padding:4px;
+  }
+  .dataset-item {
+    display:flex; align-items:center; gap:5px;
+    margin-bottom:3px; font-family:'Space Mono',monospace; font-size:0.78rem;
+    border-left:2px solid transparent; padding-left:4px; transition:all 0.2s;
+  }
+  .dataset-item .seq    { color:var(--accent3); }
+  .dataset-item .arrow  { color:var(--muted); }
+  .dataset-item .target { color:var(--accent2); }
+  .dataset-item.current-sample { background:#6b8bff0a; border-left-color:var(--accent3); }
+
+  .stat-row {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:6px; font-size:0.82rem;
+  }
+  .stat-row label { color:var(--muted); }
+  .stat-row .val  { font-family:'Space Mono',monospace; color:var(--accent); }
+
+  .loss-sparkline { width:100%; height:48px; margin:8px 0; }
+
+  .btn {
+    width:100%; padding:7px;
+    background:transparent; border:1px solid var(--accent);
+    color:var(--accent); font-family:'Space Mono',monospace; font-size:0.78rem;
+    cursor:pointer; letter-spacing:0.06em; transition:all 0.2s;
+    margin-bottom:5px; border-radius:3px;
+  }
+  .btn:hover    { background:#00ff8820; }
+  .btn.secondary{ border-color:var(--accent3); color:var(--accent3); }
+  .btn.secondary:hover{ background:#6b8bff20; }
+  .btn.danger   { border-color:var(--accent2); color:var(--accent2); }
+  .btn.danger:hover{ background:#ff6b6b20; }
+  .btn:disabled { opacity:0.3; cursor:not-allowed; }
+
+  #speed-label { color:var(--muted); font-size:0.78rem; }
+  input[type=range]{ accent-color:var(--accent); width:100%; margin:3px 0 7px; }
+
+  /* ── COL 2: Viz ── */
+  #panel-attention { grid-column:2; grid-row:1; }
+  #panel-inference { grid-column:2; grid-row:2; }
+
+  .step-indicator { display:flex; gap:5px; margin-bottom:10px; flex-wrap:wrap; }
+  .step-pill {
+    padding:3px 7px; border-radius:20px; font-size:0.68rem;
+    font-family:'Space Mono',monospace; letter-spacing:0.07em;
+    border:1px solid var(--border); color:var(--muted);
+    transition:all 0.3s; cursor:pointer; user-select:none;
+  }
+  .step-pill:hover   { border-color:var(--accent3); color:var(--accent3); }
+  .step-pill.active  { border-color:var(--accent4); color:var(--accent4); background:#ffd70011; }
+  .step-pill.done    { border-color:var(--accent);  color:var(--accent);  background:#00ff8808; }
+
+  .formula-strip {
+    background:var(--dim); border:1px solid var(--border); border-radius:4px;
+    padding:7px 11px; margin:0 0 10px;
+    font-family:'Space Mono',monospace; font-size:0.74rem; color:var(--muted); line-height:1.8;
+  }
+  .formula-strip .hl  { color:var(--accent4); }
+  .formula-strip .hl2 { color:var(--accent); }
+  .formula-strip .hl3 { color:var(--accent2); }
+  .formula-strip .hl4 { color:var(--accent3); }
+
+  .attention-viz { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .matrix-block  { flex:0 0 auto; }
+  .matrix-label  {
+    font-size:0.68rem; letter-spacing:0.07em; color:var(--muted);
+    text-transform:uppercase; font-family:'Space Mono',monospace; margin-bottom:4px;
+  }
+  .matrix-grid      { display:grid; gap:2px; }
+  .matrix-cell {
+    width:26px; height:26px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Mono',monospace; font-size:0.52rem;
+    border:1px solid var(--border); transition:background 0.4s; border-radius:2px;
+  }
+  .attn-score-grid { display:grid; gap:2px; }
+  .attn-cell {
+    width:26px; height:26px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Mono',monospace; font-size:0.52rem;
+    border:1px solid transparent; transition:all 0.5s; border-radius:2px;
+  }
+  .flash { animation:flashAnim 0.5s ease; }
+  @keyframes flashAnim { 0%{opacity:0.3} 50%{opacity:1} 100%{} }
+
+  /* inference */
+  .token-display {
+    display:flex; gap:4px; flex-wrap:wrap;
+    min-height:32px; align-items:center; margin-bottom:8px;
+  }
+  .token-chip {
+    padding:3px 8px; border:1px solid var(--border);
+    font-family:'Space Mono',monospace; font-size:0.85rem;
+    border-radius:3px; transition:all 0.4s; background:var(--dim);
+  }
+  .token-chip.context   { border-color:var(--accent3); color:var(--accent3); }
+  .token-chip.generated { border-color:var(--accent); color:var(--accent); background:#00ff8811; animation:pop 0.3s ease; }
+  .token-chip.predicting{ border-color:var(--accent4); color:var(--accent4); background:#ffd70011; animation:pulse 0.8s infinite; }
+  @keyframes pop   { 0%{transform:scale(0.8);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .prob-bars { display:flex; flex-direction:column; gap:3px; }
+  .prob-row  { display:flex; align-items:center; gap:6px; font-family:'Space Mono',monospace; font-size:0.72rem; }
+  .prob-row .tok     { width:18px; text-align:center; color:var(--muted); }
+  .prob-bar-track    { flex:1; height:13px; background:var(--dim); border-radius:2px; overflow:hidden; }
+  .prob-bar-fill     { height:100%; background:var(--accent3); transition:width 0.5s ease; border-radius:2px; }
+  .prob-bar-fill.top { background:var(--accent); }
+  .prob-row .pct     { width:34px; text-align:right; color:var(--muted); }
+
+  /* ── COL 3: Weights ── */
+  #panel-weights { grid-column:3; grid-row:1/3; }
+  .weight-matrix { margin-bottom:12px; overflow-x:auto; }
+  .weight-row    { display:flex; gap:2px; margin-bottom:2px; }
+  .weight-cell   { width:16px; height:16px; border-radius:2px; transition:background 0.5s; border:1px solid transparent; }
+
+  .phase-badge {
+    display:inline-block; padding:2px 8px; border-radius:20px;
+    font-size:0.68rem; font-family:'Space Mono',monospace; letter-spacing:0.1em; margin-bottom:9px;
+  }
+  .phase-badge.training  { background:#ffd70022; color:var(--accent4); border:1px solid var(--accent4); }
+  .phase-badge.inference { background:#00ff8822; color:var(--accent);  border:1px solid var(--accent); }
+  .phase-badge.idle      { background:var(--dim); color:var(--muted);  border:1px solid var(--border); }
+
+  .log-box {
+    background:var(--bg); border:1px solid var(--border); border-radius:4px;
+    padding:7px; height:90px; overflow-y:auto;
+    font-family:'Space Mono',monospace; font-size:0.68rem; line-height:1.7; color:var(--muted);
+  }
+  .log-line.info { color:var(--accent3); }
+  .log-line.good { color:var(--accent); }
+
+  /* ── COL 4: Explanation (extracted to explain-panel.html) ── */
+  #panel-explain { display:none; }
+
+  .explain-nav {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px 8px; border-bottom:1px solid var(--border);
+    background:var(--dim); flex-shrink:0;
+  }
+  .nav-btn {
+    background:transparent; border:1px solid var(--border);
+    color:var(--muted); font-family:'Space Mono',monospace;
+    font-size:0.72rem; padding:5px 9px; cursor:pointer;
+    border-radius:3px; letter-spacing:0.05em; transition:all 0.2s;
+    flex-shrink:0;
+  }
+  .nav-btn:hover:not(:disabled) { border-color:var(--accent3); color:var(--accent3); }
+  .nav-btn:disabled { opacity:0.25; cursor:not-allowed; }
+
+  .nav-center {
+    font-family:'Space Mono',monospace; font-size:0.72rem;
+    color:var(--muted); text-align:center; flex:1; padding:0 8px;
+  }
+  .nav-step-name {
+    display:block; color:var(--accent4); font-size:0.7rem;
+    letter-spacing:0.1em; margin-bottom:2px; text-transform:uppercase;
+  }
+
+  .explain-dots {
+    display:flex; gap:4px; justify-content:center; padding:8px 14px 6px;
+    flex-shrink:0; flex-wrap:wrap; border-bottom:1px solid var(--border);
+  }
+  .e-dot {
+    width:8px; height:8px; border-radius:50%; background:var(--border);
+    cursor:pointer; transition:all 0.2s; border:1px solid transparent;
+  }
+  .e-dot:hover   { background:var(--muted); }
+  .e-dot.reached { background:#00ff8840; border-color:var(--accent); }
+  .e-dot.current { background:var(--accent4); border-color:var(--accent4); transform:scale(1.35); }
+
+  .explain-body { flex:1; overflow-y:auto; }
+
+  .explain-hero {
+    padding:16px 16px 10px; border-bottom:1px solid var(--border);
+  }
+  .explain-emoji-wrap { font-size:2.0rem; margin-bottom:7px; display:block; }
+  .explain-step-label {
+    font-family:'Space Mono',monospace; font-size:0.68rem;
+    letter-spacing:0.14em; color:var(--accent4); text-transform:uppercase; margin-bottom:5px;
+  }
+  .explain-tagline { font-size:1.1rem; font-weight:600; color:var(--text); line-height:1.3; }
+
+  .explain-section { padding:12px 16px; border-bottom:1px solid var(--border); }
+  .explain-section-title {
+    font-family:'Space Mono',monospace; font-size:0.68rem; letter-spacing:0.12em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:7px;
+  }
+  .explain-plain { font-size:0.92rem; color:#b0b0d0; line-height:1.75; }
+  .explain-plain strong { color:var(--text); }
+  .explain-plain em     { color:var(--accent3); font-style:normal; }
+
+  .explain-tech-box {
+    background:#07070d; border:1px solid var(--border); border-radius:4px;
+    padding:9px 11px; font-family:'Space Mono',monospace;
+    font-size:0.72rem; color:var(--muted); line-height:1.75;
+  }
+  .explain-tech-box .hl  { color:var(--accent4); }
+  .explain-tech-box .hl2 { color:var(--accent); }
+  .explain-tech-box .hl3 { color:var(--accent2); }
+  .explain-tech-box .hl4 { color:var(--accent3); }
+
+  .explain-footer {
+    padding:10px 14px; flex-shrink:0;
+    border-top:1px solid var(--border); background:var(--dim);
+    display:flex; gap:6px;
+  }
+  .explain-footer .nav-btn { flex:1; padding:7px; font-size:0.76rem; }
+  .explain-footer .nav-btn.primary { border-color:var(--accent3); color:var(--accent3); }
+  .explain-footer .nav-btn.primary:hover:not(:disabled) { background:#6b8bff20; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Little Language Model - The fundamentals of scaled dot product attention</h1>
+  <p>Explanations: open <a href="explain-panel.html" target="_blank" style="color:var(--accent3);text-decoration:none;border-bottom:1px solid var(--accent3);">explain-panel.html</a> alongside</p>
+</header>
+
+<div class="main">
+
+<!-- COL 1 -->
+<div class="panel" id="panel-data">
+  <div class="panel-title">Vocabulary (26 tokens)</div>
+  <div class="vocab-grid" id="vocab-grid"></div>
+
+  <div class="separator"></div>
+  <div class="panel-title">Training Samples</div>
+  <div id="dataset-list"></div>
+
+  <div class="separator"></div>
+  <div class="panel-title">Stats</div>
+  <div class="stat-row"><label>Epoch</label><span class="val" id="stat-epoch">—</span></div>
+  <div class="stat-row"><label>Step</label><span class="val" id="stat-step">—</span></div>
+  <div class="stat-row"><label>Loss</label><span class="val" id="stat-loss">—</span></div>
+  <svg class="loss-sparkline" id="loss-svg"></svg>
+
+  <div class="separator"></div>
+  <div class="panel-title">Training Controls</div>
+  <label id="speed-label">Speed: <span id="speed-val">Medium</span></label>
+  <input type="range" id="speed-slider" min="1" max="5" value="3">
+  <button class="btn" id="btn-train-step">▶ STEP (1 sample)</button>
+  <button class="btn secondary" id="btn-train-epoch">⟳ TRAIN EPOCH</button>
+  <button class="btn secondary" id="btn-train-auto">AUTO-TRAIN</button>
+  <button class="btn danger" id="btn-reset">↺ RESET WEIGHTS</button>
+
+  <div class="separator"></div>
+  <div class="panel-title">Inference</div>
+  <label id="speed-label" style="display:block;margin-bottom:4px;">Start sequence (e.g. ABC or ZYX):</label>
+  <input type="text" id="infer-input" maxlength="3" value="ABC" style="width:100%;padding:5px 7px;background:var(--bg);border:1px solid var(--border);color:var(--accent);font-family:'Space Mono',monospace;font-size:0.78rem;border-radius:3px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.1em;">
+  <button class="btn secondary" id="btn-infer">▶ START INFERENCE</button>
+  <button class="btn" id="btn-infer-step" disabled>⊳ NEXT TOKEN</button>
+</div>
+
+<!-- COL 2 TOP: Attention viz -->
+<div class="panel" id="panel-attention">
+  <div class="panel-title">Scaled Dot-Product Attention — Forward Pass</div>
+  <div class="step-indicator" id="step-indicator">
+    <div class="step-pill" id="pill-embed"   onclick="jumpExplain('embed')">EMBED</div>
+    <div class="step-pill" id="pill-qkv"     onclick="jumpExplain('qkv')">Q·K·V</div>
+    <div class="step-pill" id="pill-scores"  onclick="jumpExplain('scores')">SCORES</div>
+    <div class="step-pill" id="pill-softmax" onclick="jumpExplain('softmax')">SOFTMAX</div>
+    <div class="step-pill" id="pill-output"  onclick="jumpExplain('output')">OUTPUT</div>
+    <div class="step-pill" id="pill-logits"  onclick="jumpExplain('logits')">LOGITS</div>
+    <div class="step-pill" id="pill-loss"    onclick="jumpExplain('loss')">LOSS</div>
+    <div class="step-pill" id="pill-backprop"onclick="jumpExplain('backprop')">BACKPROP</div>
+  </div>
+  <div class="formula-strip">
+    Attn(<span class="hl">Q</span>,<span class="hl2">K</span>,<span class="hl3">V</span>) = softmax( <span class="hl">Q</span><span class="hl2">Kᵀ</span> / √<span class="hl4">dₖ</span> ) · <span class="hl3">V</span>
+    &nbsp;|&nbsp; dₖ=<span class="hl4" id="formula-dk">?</span> &nbsp;√dₖ=<span class="hl4" id="formula-sqdk">?</span>
+  </div>
+  <div class="attention-viz">
+    <div class="matrix-block">
+      <div class="matrix-label">Embeddings <span>(seq×d)</span></div>
+      <div class="matrix-grid" id="mat-embed"></div>
+    </div>
+    <div class="matrix-block">
+      <div class="matrix-label"><span style="color:var(--accent)">Q</span> Queries</div>
+      <div class="matrix-grid" id="mat-Q"></div>
+    </div>
+    <div class="matrix-block">
+      <div class="matrix-label"><span style="color:var(--accent2)">K</span> Keys</div>
+      <div class="matrix-grid" id="mat-K"></div>
+    </div>
+    <div class="matrix-block">
+      <div class="matrix-label"><span style="color:var(--accent3)">V</span> Values</div>
+      <div class="matrix-grid" id="mat-V"></div>
+    </div>
+    <div class="matrix-block">
+      <div class="matrix-label">Attn Weights</div>
+      <div class="attn-score-grid" id="mat-attn"></div>
+    </div>
+    <div class="matrix-block">
+      <div class="matrix-label">Output</div>
+      <div class="matrix-grid" id="mat-out"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COL 2 BOTTOM: Inference -->
+<div class="panel" id="panel-inference">
+  <div class="panel-title">Inference — Autoregressive Generation</div>
+  <div class="token-display" id="token-display">
+    <span style="color:var(--muted);font-size:0.7rem;">Train the model first, then run inference.</span>
+  </div>
+  <div class="panel-title" style="margin-bottom:5px">Next-token Probabilities</div>
+  <div class="prob-bars" id="prob-bars"></div>
+</div>
+
+<!-- COL 3: Weights + Log -->
+<div class="panel" id="panel-weights">
+  <div class="panel-title">Weight Matrices</div>
+  <div id="phase-badge" class="phase-badge idle">IDLE</div>
+  <div class="weight-matrix">
+    <div class="matrix-label">Wq <span style="color:var(--accent)">(d×dₖ)</span></div>
+    <div id="wq-display"></div>
+  </div>
+  <div class="weight-matrix">
+    <div class="matrix-label">Wk <span style="color:var(--accent2)">(d×dₖ)</span></div>
+    <div id="wk-display"></div>
+  </div>
+  <div class="weight-matrix">
+    <div class="matrix-label">Wv <span style="color:var(--accent3)">(d×dₖ)</span></div>
+    <div id="wv-display"></div>
+  </div>
+  <div class="weight-matrix">
+    <div class="matrix-label">Wo <span style="color:var(--accent4)">(dₖ×d)</span></div>
+    <div id="wo-display"></div>
+  </div>
+  <div class="weight-matrix">
+    <div class="matrix-label">Wout <span style="color:var(--muted)">(d×vocab)</span></div>
+    <div id="wout-display"></div>
+  </div>
+  <div class="separator"></div>
+  <div class="panel-title">Event Log</div>
+  <div class="log-box" id="log-box"></div>
+</div>
+
+<!-- COL 4: Explanation Panel -->
+<div id="panel-explain">
+
+  <div class="explain-nav">
+    <button class="nav-btn" id="ep-prev-t" onclick="explainNav(-1)" disabled>← PREV</button>
+    <div class="nav-center">
+      <span class="nav-step-name" id="nav-step-name">WELCOME</span>
+      <span id="nav-counter">1 / 1</span>
+    </div>
+    <button class="nav-btn" id="ep-next-t" onclick="explainNav(1)" disabled>NEXT →</button>
+  </div>
+
+  <div class="explain-dots" id="explain-dots"></div>
+
+  <div class="explain-body" id="explain-body">
+    <!-- injected by JS -->
+  </div>
+
+  <div class="explain-footer">
+    <button class="nav-btn" id="ep-prev-b" onclick="explainNav(-1)" disabled>← PREV</button>
+    <button class="nav-btn primary" id="ep-next-b" onclick="explainNav(1)" disabled>NEXT →</button>
+  </div>
+
+</div>
+</div><!-- .main -->
+
+<script>
+// ═══════════════════════════════════════════════════
+// Tiny Transformer
+// ═══════════════════════════════════════════════════
+
+const VOCAB_SIZE=26, D_MODEL=8, D_K=6, SEQ_LEN=3, LR=0.03;
+const VOCAB='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const STEP_ORDER=['embed','qkv','scores','softmax','output','logits','loss','backprop'];
+
+const RAW=[];
+// Consecutive runs (ABCD, BCDE, ... WXYZ)
+for(let i=0;i<=22;i++) RAW.push([i,i+1,i+2,i+3]);
+// Forward wrap-around (XYZA, YZAB, ZABC)
+for(let i=23;i<=25;i++) RAW.push([i%26,(i+1)%26,(i+2)%26,(i+3)%26]);
+// Reverse runs (DCBA, EDCB, ... ZYXW)
+for(let i=25;i>=3;i--) RAW.push([i,i-1,i-2,i-3]);
+// Reverse wrap-around (CBAZ, BAZY, AZYX)
+for(let i=2;i>=0;i--) RAW.push([i,(i-1+26)%26,(i-2+26)%26,(i-3+26)%26]);
+let TRAINING_DATA=[];
+RAW.forEach(seq=>{
+  for(let i=0;i<seq.length-SEQ_LEN;i++)
+    TRAINING_DATA.push({input:seq.slice(i,i+SEQ_LEN),target:seq[i+SEQ_LEN]});
+  if(seq.length>=SEQ_LEN+1)
+    TRAINING_DATA.push({input:seq.slice(0,SEQ_LEN),target:seq[SEQ_LEN]});
+});
+TRAINING_DATA=TRAINING_DATA.filter((d,i)=>
+  TRAINING_DATA.findIndex(x=>JSON.stringify(x)===JSON.stringify(d))===i);
+
+// ── Math ────────────────────────────────────────────
+const randn=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+const randMat=(r,c,s=0.5)=>Array.from({length:r},()=>Array.from({length:c},()=>randn()*s));
+const zeros=(r,c)=>Array.from({length:r},()=>Array(c).fill(0));
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const matMul=(A,B)=>{const R=A.length,C=B[0].length,K=B.length,o=zeros(R,C);for(let i=0;i<R;i++)for(let j=0;j<C;j++)for(let k=0;k<K;k++)o[i][j]+=A[i][k]*B[k][j];return o;};
+const softmax=a=>{const m=Math.max(...a),e=a.map(x=>Math.exp(clamp(x-m,-80,80))),s=e.reduce((a,b)=>a+b,1e-12);return e.map(x=>x/s);};
+const softmaxRows=m=>m.map(r=>softmax(r));
+const transpose=m=>m[0].map((_,j)=>m.map(r=>r[j]));
+
+// ── Model ────────────────────────────────────────────
+let model={}, cache={};
+
+function initModel(){
+  const xs=v=>1/Math.sqrt(v);  // Xavier scale
+  model={
+    E:randMat(VOCAB_SIZE,D_MODEL,xs(D_MODEL)), PE:randMat(SEQ_LEN,D_MODEL,0.1),
+    Wq:randMat(D_MODEL,D_K,xs(D_MODEL)), Wk:randMat(D_MODEL,D_K,xs(D_MODEL)),
+    Wv:randMat(D_MODEL,D_K,xs(D_MODEL)), Wo:randMat(D_K,D_MODEL,xs(D_K)),
+    Wout:randMat(D_MODEL,VOCAB_SIZE,xs(D_MODEL)), bout:Array(VOCAB_SIZE).fill(0),
+  };
+}
+
+function forward(toks){
+  const embeds=toks.map((t,p)=>model.E[t].map((v,j)=>v+model.PE[p][j]));
+  const Q=matMul(embeds,model.Wq), K=matMul(embeds,model.Wk), V=matMul(embeds,model.Wv);
+  const sc=Math.sqrt(D_K), Kt=transpose(K);
+  const raw=matMul(Q,Kt).map(r=>r.map(v=>v/sc));
+  const masked=raw.map((r,i)=>r.map((v,j)=>j>i?-80:v));
+  const attnW=softmaxRows(masked);
+  const attnOut=matMul(attnW,V);
+  const proj=matMul(attnOut,model.Wo);
+  const resid=embeds.map((r,i)=>r.map((v,j)=>v+proj[i][j]));
+  const lastH=resid[SEQ_LEN-1];
+  const logits=model.Wout[0].map((_,vi)=>lastH.reduce((s,v,j)=>s+v*model.Wout[j][vi],0)+model.bout[vi]);
+  const probs=softmax(logits);
+  cache={embeds,Q,K,V,Kt,raw,masked,attnW,attnOut,proj,resid,lastH,logits,probs};
+  return{embeds,Q,K,V,attnW,attnOut,proj,resid,lastH,logits,probs};
+}
+
+function backward(toks,target){
+  const{embeds,Q,K,V,attnW,attnOut,proj,resid,lastH,probs}=cache;
+  const dLogits=probs.map((p,i)=>p-(i===target?1:0));
+  const dWout=zeros(D_MODEL,VOCAB_SIZE);
+  for(let i=0;i<D_MODEL;i++)for(let j=0;j<VOCAB_SIZE;j++)dWout[i][j]=lastH[i]*dLogits[j];
+  const dbout=dLogits.slice();
+  const dLastH=Array(D_MODEL).fill(0);
+  for(let j=0;j<D_MODEL;j++)for(let v=0;v<VOCAB_SIZE;v++)dLastH[j]+=model.Wout[j][v]*dLogits[v];
+  const dResid=resid.map((_,i)=>i===SEQ_LEN-1?dLastH.slice():Array(D_MODEL).fill(0));
+  const dProj=dResid.map(r=>r.slice());
+  const dWo=matMul(transpose(attnOut),dProj);
+  const dAttnOut=matMul(dProj,transpose(model.Wo));
+  const dAttnW=matMul(dAttnOut,transpose(V));
+  const dScores=attnW.map((row,i)=>{const s=row.reduce((a,w,j)=>a+w*dAttnW[i][j],0);return row.map((w,j)=>w*(dAttnW[i][j]-s));});
+  const dV=matMul(transpose(attnW),dAttnOut);
+  const s2=Math.sqrt(D_K);
+  const dQ=matMul(dScores,transpose(K)).map(r=>r.map(v=>v/s2));
+  const dK=matMul(transpose(dScores),Q).map(r=>r.map(v=>v/s2));
+  const dWq=matMul(transpose(embeds),dQ), dWk=matMul(transpose(embeds),dK), dWv=matMul(transpose(embeds),dV);
+
+  // Compute embedding gradients: dEmbeds from residual + QKV projections
+  const dEmbeds=dResid.map(r=>r.slice()); // from skip connection
+  const dE_q=matMul(dQ,transpose(model.Wq));
+  const dE_k=matMul(dK,transpose(model.Wk));
+  const dE_v=matMul(dV,transpose(model.Wv));
+  for(let i=0;i<SEQ_LEN;i++)for(let j=0;j<D_MODEL;j++)
+    dEmbeds[i][j]+=dE_q[i][j]+dE_k[i][j]+dE_v[i][j];
+
+  const CL=3; // gradient clip bound
+  const upd=(W,dW)=>W.map((r,i)=>r.map((v,j)=>{const g=clamp(dW[i][j],-CL,CL);const nv=v-LR*g;return isFinite(nv)?nv:v;}));
+  model.Wq=upd(model.Wq,dWq); model.Wk=upd(model.Wk,dWk); model.Wv=upd(model.Wv,dWv);
+  model.Wo=upd(model.Wo,dWo); model.Wout=upd(model.Wout,dWout);
+  model.bout=model.bout.map((b,i)=>{const nv=b-LR*clamp(dbout[i],-CL,CL);return isFinite(nv)?nv:b;});
+
+  // Update embeddings for tokens in this sample
+  for(let p=0;p<SEQ_LEN;p++){
+    const tok=toks[p];
+    for(let j=0;j<D_MODEL;j++){
+      const g=clamp(dEmbeds[p][j],-CL,CL);
+      const nv=model.E[tok][j]-LR*g;
+      if(isFinite(nv))model.E[tok][j]=nv;
+    }
+  }
+  // Update positional encodings
+  for(let p=0;p<SEQ_LEN;p++){
+    for(let j=0;j<D_MODEL;j++){
+      const g=clamp(dEmbeds[p][j],-CL,CL);
+      const nv=model.PE[p][j]-LR*0.1*g; // slower rate for PE
+      if(isFinite(nv))model.PE[p][j]=nv;
+    }
+  }
+}
+
+// ── State ────────────────────────────────────────────
+let ts={epoch:0,step:0,total:0,sIdx:0,losses:[],lossMax:0,phase:'idle'};
+let is={context:null,generated:[],running:false};
+
+// ── Explanation Panel (extracted to explain-panel.html) ──
+// No-op stubs so step pills and init calls don't error.
+function buildDots(){}
+function showExplain(){}
+function explainNav(){}
+function jumpExplain(){}
+
+// ── Rendering ────────────────────────────────────────
+const clr=(v,mn,mx,h=120)=>{const t=clamp((v-mn)/(mx-mn+1e-9),0,1);return`hsla(${h},80%,${20+t*50}%,${0.3+t*0.7})`;};
+function renderMat(id,mat,h=200){
+  const el=document.getElementById(id);if(!el)return;
+  const flat=mat.flat(),mn=Math.min(...flat),mx=Math.max(...flat);
+  el.style.gridTemplateColumns=`repeat(${mat[0].length},26px)`;el.innerHTML='';
+  mat.forEach(row=>row.forEach(v=>{
+    const c=document.createElement('div');c.className='matrix-cell flash';
+    c.style.background=clr(v,mn,mx,h);c.textContent=v.toFixed(1);el.appendChild(c);
+  }));
+}
+function renderAttn(id,mat,toks){
+  const el=document.getElementById(id);if(!el)return;
+  el.style.gridTemplateColumns=`repeat(${mat[0].length+1},26px)`;el.innerHTML='';
+  const mk=()=>{const d=document.createElement('div');d.className='attn-cell';return d;};
+  const corner=mk();el.appendChild(corner);
+  toks.forEach(t=>{const d=mk();d.style.color='var(--muted)';d.style.fontSize='0.58rem';d.textContent=VOCAB[t];el.appendChild(d);});
+  mat.forEach((row,i)=>{
+    const rl=mk();rl.style.color='var(--muted)';rl.style.fontSize='0.58rem';rl.textContent=VOCAB[toks[i]];el.appendChild(rl);
+    row.forEach(v=>{
+      const c=mk();c.classList.add('flash');
+      c.style.background=`rgba(0,255,136,${v.toFixed(2)})`;
+      c.style.borderColor=v>0.5?'var(--accent)':'transparent';
+      c.textContent=v.toFixed(2);c.style.color=v>0.4?'#000':'var(--accent)';
+      el.appendChild(c);
+    });
+  });
+}
+function renderWts(id,mat,h){
+  const el=document.getElementById(id);if(!el)return;
+  const flat=mat.flat(),am=Math.max(...flat.map(Math.abs))+1e-9;
+  el.innerHTML='';
+  mat.forEach(row=>{
+    const re=document.createElement('div');re.className='weight-row';
+    row.forEach(v=>{
+      const c=document.createElement('div');c.className='weight-cell';
+      const t=(v+am)/(2*am);c.style.background=clr(t,0,1,h);
+      c.style.borderColor=Math.abs(v)>am*0.7?`hsl(${h},80%,60%)`:'transparent';
+      re.appendChild(c);
+    });
+    el.appendChild(re);
+  });
+}
+function refreshWts(){
+  renderWts('wq-display',model.Wq,120);renderWts('wk-display',model.Wk,0);
+  renderWts('wv-display',model.Wv,220);renderWts('wo-display',model.Wo,45);
+  renderWts('wout-display',model.Wout,280);
+}
+function refreshStats(){
+  document.getElementById('stat-epoch').textContent=ts.epoch;
+  document.getElementById('stat-step').textContent=ts.total;
+  if(ts.losses.length)document.getElementById('stat-loss').textContent=ts.losses[ts.losses.length-1].toFixed(4);
+  drawSpark();
+}
+function drawSpark(){
+  const svg=document.getElementById('loss-svg'),W=svg.clientWidth||170,H=48,l=ts.losses;
+  if(l.length<2){svg.innerHTML='';return;}
+  const mn=0, mx=ts.lossMax||Math.max(...l), rng=mx-mn+1e-9;
+  const pts=l.map((v,i)=>`${(i/(l.length-1))*W},${H-((v-mn)/rng)*(H-8)-4}`).join(' ');
+  svg.innerHTML=`<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.5" opacity="0.8"/>
+    <text x="2" y="9" fill="var(--muted)" font-size="7" font-family="Space Mono">${mx.toFixed(1)}</text>
+    <text x="2" y="${H-2}" fill="var(--muted)" font-size="7" font-family="Space Mono">0</text>
+    <text x="${W-26}" y="${H-2}" fill="var(--accent)" font-size="7" font-family="Space Mono">${l[l.length-1].toFixed(3)}</text>`;
+}
+function log(msg,cls=''){
+  const b=document.getElementById('log-box');
+  const l=document.createElement('div');l.className='log-line '+cls;l.textContent='> '+msg;
+  b.appendChild(l);b.scrollTop=b.scrollHeight;
+  while(b.children.length>50)b.removeChild(b.firstChild);
+}
+function setPhase(ph){
+  ts.phase=ph;const b=document.getElementById('phase-badge');
+  b.className='phase-badge '+ph;b.textContent=ph.toUpperCase();
+}
+function pillActivate(id){
+  STEP_ORDER.forEach(s=>{const e=document.getElementById('pill-'+s);if(e&&e.classList.contains('active')){e.classList.remove('active');e.classList.add('done');}});
+  const e=document.getElementById('pill-'+id);if(e){e.classList.remove('done');e.classList.add('active');}
+}
+function pillReset(){STEP_ORDER.forEach(s=>{const e=document.getElementById('pill-'+s);if(e)e.classList.remove('active','done');});}
+
+// ── Training ─────────────────────────────────────────
+async function trainStep(spd){
+  const sample=TRAINING_DATA[ts.sIdx%TRAINING_DATA.length];
+  document.querySelectorAll('.dataset-item').forEach((el,i)=>el.classList.toggle('current-sample',i===ts.sIdx%TRAINING_DATA.length));
+  sample.input.concat([sample.target]).forEach(tok=>{
+    const e=document.querySelector(`#vocab-grid [data-tok="${tok}"]`);
+    if(e){e.classList.add('active');setTimeout(()=>e.classList.remove('active'),spd*4);}
+  });
+  setPhase('training');pillReset();
+  const dl=ms=>new Promise(r=>setTimeout(r,ms));
+  const fast=spd<=30;
+
+  // Run the full forward pass immediately so all cache is ready
+  const result=forward(sample.input);
+  const loss=-Math.log(result.probs[sample.target]+1e-9);
+
+  // 1 EMBED
+  pillActivate('embed');
+  renderMat('mat-embed',cache.embeds,200);
+  if(!fast)await dl(spd*0.25);
+
+  // 2 QKV
+  pillActivate('qkv');
+  renderMat('mat-Q',cache.Q,120);renderMat('mat-K',cache.K,0);renderMat('mat-V',cache.V,220);
+  if(!fast)await dl(spd*0.25);
+
+  // 3 SCORES
+  pillActivate('scores');
+  if(!fast)await dl(spd*0.2);
+
+  // 4 SOFTMAX
+  pillActivate('softmax');
+  renderAttn('mat-attn',cache.attnW,sample.input);
+  if(!fast)await dl(spd*0.25);
+
+  // 5 OUTPUT
+  pillActivate('output');
+  renderMat('mat-out',cache.attnOut,45);
+  if(!fast)await dl(spd*0.2);
+
+  // 6 LOGITS
+  pillActivate('logits');
+  if(!fast)await dl(spd*0.2);
+
+  // 7 LOSS
+  pillActivate('loss');
+  if(!fast)await dl(spd*0.2);
+
+  // 8 BACKPROP
+  pillActivate('backprop');
+  backward(sample.input,sample.target);
+  refreshWts();
+  if(!fast)await dl(spd*0.15);
+
+  // Commit
+  ts.losses.push(loss);if(ts.losses.length>500)ts.losses.shift();
+  if(loss>ts.lossMax)ts.lossMax=loss;
+  ts.sIdx++;ts.step++;ts.total++;
+  if(ts.sIdx%TRAINING_DATA.length===0){
+    ts.epoch++;
+    const avg=ts.losses.slice(-TRAINING_DATA.length).reduce((a,b)=>a+b,0)/TRAINING_DATA.length;
+    log(`Epoch ${ts.epoch} done. avg loss: ${avg.toFixed(4)}`,'good');
+  }
+  refreshStats();
+  const pred=result.probs.indexOf(Math.max(...result.probs));
+  log(`Step ${ts.total}: [${sample.input.map(t=>VOCAB[t]).join('')}]→${VOCAB[sample.target]} loss=${loss.toFixed(4)} pred=${VOCAB[pred]}`,loss<1?'good':'');
+  setTimeout(()=>{const e=document.getElementById('pill-backprop');if(e){e.classList.remove('active');e.classList.add('done');}setPhase('idle');},spd);
+}
+
+// ── Inference ────────────────────────────────────────
+function startInfer(){
+  const raw=document.getElementById('infer-input').value.toUpperCase().replace(/[^A-Z]/g,'');
+  const chars=raw.slice(0,SEQ_LEN).split('');
+  if(chars.length<SEQ_LEN){
+    log(`Need ${SEQ_LEN} letters (got ${chars.length}). Using random sample.`,'');
+    const s=TRAINING_DATA[Math.floor(Math.random()*TRAINING_DATA.length)];
+    is={context:s.input.slice(),generated:[],running:true};
+  } else {
+    const toks=chars.map(c=>VOCAB.indexOf(c)).filter(i=>i>=0);
+    if(toks.length<SEQ_LEN){
+      log('Invalid characters. Using random sample.','');
+      const s=TRAINING_DATA[Math.floor(Math.random()*TRAINING_DATA.length)];
+      is={context:s.input.slice(),generated:[],running:true};
+    } else {
+      is={context:toks,generated:[],running:true};
+    }
+  }
+  document.getElementById('btn-infer-step').disabled=false;
+  document.getElementById('btn-infer').disabled=true;
+  renderInfer();
+  log(`Inference: context=[${is.context.map(t=>VOCAB[t]).join(' ')}]`,'info');
+}
+function inferStep(){
+  if(!is.running)return;
+  const ctx=is.context.slice(-SEQ_LEN);
+  const res=forward(ctx);
+  const pairs=res.probs.map((p,i)=>({p,i})).sort((a,b)=>b.p-a.p);
+  const pb=document.getElementById('prob-bars');pb.innerHTML='';
+  pairs.slice(0,10).forEach(({p,i},r)=>{
+    const row=document.createElement('div');row.className='prob-row';
+    row.innerHTML=`<span class="tok">${VOCAB[i]}</span><div class="prob-bar-track"><div class="prob-bar-fill ${r===0?'top':''}" style="width:${(p*100).toFixed(1)}%"></div></div><span class="pct">${(p*100).toFixed(1)}%</span>`;
+    pb.appendChild(row);
+  });
+  const nxt=pairs[0].i;
+  is.context.push(nxt);is.generated.push(nxt);
+  renderAttn('mat-attn',cache.attnW,ctx);
+  log(`→ ${VOCAB[nxt]}  (${(res.probs[nxt]*100).toFixed(1)}%)`,'good');
+  if(is.generated.length>=12){
+    is.running=false;
+    document.getElementById('btn-infer-step').disabled=true;
+    document.getElementById('btn-infer').disabled=false;
+    log('Inference complete (12 tokens)','info');
+  }
+  renderInfer();setPhase('inference');
+}
+function renderInfer(){
+  const d=document.getElementById('token-display');d.innerHTML='';
+  const cl=is.context.length-is.generated.length;
+  is.context.slice(0,cl).forEach(t=>{const c=document.createElement('div');c.className='token-chip context';c.textContent=VOCAB[t];d.appendChild(c);});
+  is.generated.forEach(t=>{const c=document.createElement('div');c.className='token-chip generated';c.textContent=VOCAB[t];d.appendChild(c);});
+  if(is.running){const c=document.createElement('div');c.className='token-chip predicting';c.textContent='?';d.appendChild(c);}
+}
+
+// ── Controls ─────────────────────────────────────────
+function getSpd(){return[0,700,450,250,80,20][parseInt(document.getElementById('speed-slider').value)];}
+function disableCtrl(d){['btn-train-step','btn-train-epoch','btn-reset'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=d;});}
+
+function initUI(){
+  const vg=document.getElementById('vocab-grid');
+  VOCAB.forEach((t,i)=>{const e=document.createElement('div');e.className='vocab-token';e.dataset.tok=i;e.textContent=t;vg.appendChild(e);});
+  const dl=document.getElementById('dataset-list');
+  TRAINING_DATA.forEach((s,idx)=>{
+    const e=document.createElement('div');e.className='dataset-item';e.dataset.idx=idx;
+    e.innerHTML=`<span class="seq">${s.input.map(t=>VOCAB[t]).join('')}</span><span class="arrow">→</span><span class="target">${VOCAB[s.target]}</span>`;
+    dl.appendChild(e);
+  });
+  document.getElementById('formula-dk').textContent=D_K;
+  document.getElementById('formula-sqdk').textContent=Math.sqrt(D_K).toFixed(2);
+
+  document.getElementById('btn-train-step').addEventListener('click',async()=>{
+    disableCtrl(true);await trainStep(getSpd());disableCtrl(false);
+  });
+  document.getElementById('btn-train-epoch').addEventListener('click',async()=>{
+    disableCtrl(true);
+    for(let i=0;i<TRAINING_DATA.length;i++)await trainStep(Math.min(getSpd(),100));
+    disableCtrl(false);
+  });
+
+  let autoOn=false;
+  document.getElementById('btn-train-auto').addEventListener('click',async function(){
+    if(autoOn){
+      autoOn=false;this.textContent='AUTO-TRAIN';this.classList.remove('danger');disableCtrl(false);
+    } else {
+      autoOn=true;this.textContent='⏹ STOP AUTO';this.classList.add('danger');
+      disableCtrl(false);
+      document.getElementById('btn-train-step').disabled=true;
+      document.getElementById('btn-train-epoch').disabled=true;
+      (async()=>{while(autoOn){await trainStep(Math.max(20,getSpd()*0.4));await new Promise(r=>setTimeout(r,5));}})();
+    }
+  });
+
+  document.getElementById('btn-reset').addEventListener('click',()=>{
+    initModel();
+    ts={epoch:0,step:0,total:0,sIdx:0,losses:[],lossMax:0,phase:'idle'};
+    is={context:null,generated:[],running:false};
+    refreshStats();refreshWts();pillReset();setPhase('idle');
+    ['mat-embed','mat-Q','mat-K','mat-V','mat-attn','mat-out'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='';});
+    document.getElementById('token-display').innerHTML='<span style="color:var(--muted);font-size:0.7rem;">Train the model first, then run inference.</span>';
+    document.getElementById('prob-bars').innerHTML='';
+    document.getElementById('btn-infer-step').disabled=true;
+    document.getElementById('btn-infer').disabled=false;
+    showExplain(0);log('Weights reset — ready to train again.','info');
+  });
+
+  document.getElementById('btn-infer').addEventListener('click',startInfer);
+  document.getElementById('btn-infer-step').addEventListener('click',inferStep);
+  document.getElementById('speed-slider').addEventListener('input',function(){
+    const L=['','Very Slow','Slow','Medium','Fast','Instant'];
+    document.getElementById('speed-val').textContent=L[this.value];
+  });
+
+  refreshWts();
+  log('Ready. Vocab: '+VOCAB.join(' '),'info');
+  log(`${TRAINING_DATA.length} training samples loaded`,'info');
+  log(`1-layer · 1-head · d_model=${D_MODEL} · d_k=${D_K} · vocab=${VOCAB_SIZE}`,'info');
+  buildDots();
+  showExplain(0);
+}
+
+initModel();
+initUI();
+</script>
+</body>
+</html>
